@@ -19,6 +19,8 @@ export default function App() {
     try {
       const res = await fetch('http://localhost:8001/upload', { method: 'POST', body: formData });
       const data = await res.json();
+      console.log(res);
+      console.log(data);
       if (res.ok) {
         setFilename(data.filename);
         alert('Arquivo enviado com sucesso!');
@@ -31,7 +33,7 @@ export default function App() {
   };
 
   // Perguntar à LLM
-  const handleAsk = async () => {
+  const handleAsk_old = async () => {
     if (!question) return;
     try {
       const res = await fetch('http://localhost:8001/ask', {
@@ -40,9 +42,19 @@ export default function App() {
         body: new URLSearchParams({ pergunta: question }),
       });
       const data = await res.json();
-      const ans = data.response.output;
-      setResponse(ans);
-      setHistory(prev => [...prev, { q: question, a: ans }]);
+      
+      const ans = data.response;
+
+      // se ainda for objeto, extrai o .output
+      let finalAnswer;
+      if (ans && typeof ans === "object" && "output" in ans) {
+        finalAnswer = ans.output;
+      } else {
+        finalAnswer = String(ans);
+      }
+
+      setResponse(finalAnswer);
+      setHistory(prev => [...prev, { q: question, a: finalAnswer }]);
       setQuestion('');
 
       // Detectar dados tabulares
@@ -55,6 +67,87 @@ export default function App() {
     } catch (err) {
       alert('Erro ao fazer pergunta: ' + err.message);
     }
+  };
+
+  const handleAsk_prd = async () => {
+    if (!question) return;
+    try {
+      const res = await fetch("http://localhost:8001/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ pergunta: question }),
+      });
+      const data = await res.json();
+
+      // resposta bruta do backend
+      let ans = data.response;
+
+      // se vier no formato {input, output}, pega só o output
+      if (ans && typeof ans === "object" && "output" in ans) {
+        ans = ans.output.output ? ans.output.output : ans.output;
+      }
+      console.log("Resposta bruta do backend:", ans)
+
+      // garante que ans é string
+      const finalAnswer = typeof ans === "string" ? ans : JSON.stringify(ans, null, 2);
+
+      setResponse(finalAnswer);
+      setHistory((prev) => [...prev, { q: question, a: finalAnswer }]);
+      setQuestion("");
+
+      // Detectar dados tabulares para gráfico
+      try {
+        const parsed = JSON.parse(finalAnswer);
+        if (Array.isArray(parsed)) setChartData(parsed);
+        else setChartData(null);
+      } catch {
+        setChartData(null);
+      }
+    } catch (err) {
+      alert("Erro ao fazer pergunta: " + err.message);
+    }
+  };
+  
+  const handleAsk = async () => {
+    if (!question) return;
+
+    const formData = new URLSearchParams();
+    formData.append("pergunta", question);
+
+    const res = await fetch("http://localhost:8001/ask", {
+      method: "POST",
+      body: formData,
+    });
+
+    const contentType = res.headers.get("content-type");
+
+    if (contentType === "image/png") {
+      // Cria link de download automático
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "grafico.png";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } else {
+      // Resposta textual
+      const data = await res.json();
+      const ans = data.response;
+
+      let finalAnswer;
+      if (ans && typeof ans === "object" && "output" in ans) {
+        finalAnswer = ans.output;
+      } else {
+        finalAnswer = String(ans);
+      }
+
+      setResponse(finalAnswer);
+      setHistory((prev) => [...prev, { q: question, a: finalAnswer }]);
+    }
+
+    setQuestion("");
   };
 
   return (
@@ -87,7 +180,7 @@ export default function App() {
       {response && (
         <div className="card mb-4 p-3">
           <h5>Resposta:</h5>
-          <p>{response}</p>
+          <pre>{response}</pre> {/* <pre> preserva texto/JSON */}
         </div>
       )}
 
@@ -115,7 +208,7 @@ export default function App() {
           {history.map((h, idx) => (
             <div key={idx} className="mb-2 p-2 border rounded">
               <p className="mb-1"><strong>P:</strong> {h.q}</p>
-              <p className="mb-0"><strong>R:</strong> {h.a}</p>
+              <pre className="mb-0"><strong>R:</strong> {h.a}</pre>
             </div>
           ))}
         </div>

@@ -1,19 +1,34 @@
 import pandas as pd
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
+from langchain_groq.chat_models import ChatGroq
 from langchain_experimental.agents import create_pandas_dataframe_agent
 
 class CSVAnalysisAgent:
-    def __init__(self, api_key: str):
+    def __init__(self, key: str):
         self.current_file = None
         self.df = None
         self.agent = None
 
         # Inicializando ChatOpenAI para Groq
-        self.llm = ChatOpenAI(
+        self.llm_groq = ChatGroq(
             model="llama-3.3-70b-versatile",                    # modelo Groq
             temperature=0,
-            openai_api_key=api_key,
-            base_url="https://api.groq.com/openai/v1"
+            api_key=key,
+            base_url="https://api.groq.com"
+        )
+
+        self.llm = ChatOpenAI(
+            model="gpt-4.1-nano",                    # modelo Groq
+            temperature=0,
+            api_key=key,
+            base_url="https://api.openai.com/v1"
+        )
+
+        self.llm_awa = ChatOpenAI(
+            model="Meta-Llama-3-8B-Instruct",                    # modelo Groq
+            temperature=0,
+            api_key=key,
+            base_url="https://api.awanllm.com/v1"
         )
 
     def load_file(self, file_path: str):
@@ -38,7 +53,7 @@ class CSVAnalysisAgent:
         if not self.agent:
             return {"output": "Nenhum arquivo carregado."}
         try:
-            result = self.agent.run(question)
+            result = self.agent.invoke(question)
             return {"output": result}
         except Exception as e:
             return {"output": f"Erro ao processar a pergunta: {str(e)}"}
